@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Neon Snake 🌈</title>
+<title>Neon Snake</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<link rel="shortcut icon" href="download-removebg-preview.png" type="image/x-icon">
 <style>
 body{
   margin:0;
@@ -15,26 +15,37 @@ body{
   flex-direction:column;
   align-items:center;
 }
-h2{margin:10px}
+h2{margin:8px}
+
 canvas{
-  border:3px solid #333;
   background:#000;
+  border:3px solid #333;
 }
+
 #panel{
   display:flex;
   gap:10px;
-  margin-bottom:6px;
   flex-wrap:wrap;
   justify-content:center;
+  margin-bottom:6px;
 }
-select,button{
-  padding:6px 10px;
+
+button{
+  padding:6px 12px;
   background:#111;
   color:white;
   border:1px solid #444;
   border-radius:6px;
+  cursor:pointer;
 }
-button{cursor:pointer}
+
+#info{
+  display:flex;
+  gap:20px;
+  margin-bottom:6px;
+  font-weight:bold;
+}
+
 .controls{
   margin-top:10px;
   display:grid;
@@ -48,18 +59,21 @@ button{cursor:pointer}
 
 <h2>Neon Snake 🌈</h2>
 
+<div id="info">
+  <div>Score: <span id="score">0</span></div>
+  <div>Level: <span id="level">1</span></div>
+  <div>High: <span id="high">0</span></div>
+</div>
+
 <div id="panel">
   <button id="startBtn">▶ Start</button>
   <button id="pauseBtn">⏸ Pause</button>
-
-  <label>Skin:
-    <select id="skinSelect"></select>
-  </label>
+  <button id="restartBtn">🔄 Restart</button>
 </div>
 
 <canvas id="cv" width="520" height="520"></canvas>
 
-<!-- Mobile controls -->
+<!-- Mobile Controls -->
 <div class="controls">
   <div></div><button onclick="setDir('UP')">⬆</button><div></div>
   <button onclick="setDir('LEFT')">⬅</button>
@@ -68,35 +82,25 @@ button{cursor:pointer}
 </div>
 
 <script>
-/* ================= CORE ================= */
-const canvas=cv,ctx=canvas.getContext("2d");
+/* ============ CONFIG ============ */
+const canvas=cv, ctx=canvas.getContext("2d");
 const SIZE=20;
+let baseSpeed=7;
 let interval=null;
-let speed=7;
 let running=false;
 
-/* ================= SNAKE ================= */
-let snake=[{x:100,y:100}];
-let dir="RIGHT",next="RIGHT";
-let food=randomPos();
-let score=0;
+/* ============ STORAGE ============ */
+let highScore = localStorage.getItem("neonSnakeHigh") || 0;
+high.textContent = highScore;
 
-/* ================= SKINS ================= */
-const skinData={
-  neon:{draw:i=>"#00ff88",unlock:0},
-  fire:{draw:i=>`hsl(${10+i*6},100%,50%)`,unlock:5},
-  ice:{draw:i=>"#66ccff",unlock:10},
-  cyber:{draw:i=>"#bb00ff",unlock:20},
-  rainbow:{draw:i=>`hsl(${Date.now()/8+i*25},100%,50%)`,unlock:30}
-};
+/* ============ GAME STATE ============ */
+let snake, dir, next, food;
+let scoreVal=0, levelVal=1;
 
-let unlocked=JSON.parse(localStorage.getItem("skins"))||["neon"];
-let skin=localStorage.getItem("skin")||"neon";
+/* ============ INIT ============ */
+reset();
 
-/* ================= UI INIT ================= */
-updateSkinSelect();
-
-/* ================= INPUT ================= */
+/* ============ INPUT ============ */
 document.addEventListener("keydown",e=>{
   if(!running) return;
   const k=e.key.toLowerCase();
@@ -112,7 +116,7 @@ function setDir(d){
   if(o[dir]!==d) next=d;
 }
 
-/* ================= GAME LOOP ================= */
+/* ============ LOOP ============ */
 function loop(){
   dir=next;
   let head={...snake[0]};
@@ -123,42 +127,48 @@ function loop(){
   snake.unshift(head);
 
   if(head.x===food.x && head.y===food.y){
-    score++;
-    checkUnlock();
+    scoreVal++;
+    updateLevel();
     food=randomPos();
   }else snake.pop();
 
-  if(head.x<0||head.y<0||head.x>=520||head.y>=520) gameOver();
-  for(let i=1;i<snake.length;i++)
-    if(head.x===snake[i].x && head.y===snake[i].y) gameOver();
-
+  if(hitWall(head)||hitSelf(head)) gameOver();
   draw();
 }
 
-/* ================= DRAW ================= */
+/* ============ DRAW ============ */
 function draw(){
   ctx.clearRect(0,0,520,520);
 
-  // Food
   ctx.fillStyle="red";
   ctx.beginPath();
   ctx.arc(food.x+10,food.y+10,8,0,Math.PI*2);
   ctx.fill();
 
-  // Snake
   snake.forEach((p,i)=>{
-    ctx.fillStyle=skinData[skin].draw(i);
+    ctx.fillStyle=`hsl(${i*25+Date.now()/10},100%,50%)`;
     ctx.beginPath();
     ctx.arc(p.x+10,p.y+10,9,0,Math.PI*2);
     ctx.fill();
   });
 }
 
-/* ================= BUTTONS ================= */
+/* ============ LEVEL SYSTEM ============ */
+function updateLevel(){
+  score.textContent=scoreVal;
+  let newLevel=Math.floor(scoreVal/5)+1;
+  if(newLevel!==levelVal){
+    levelVal=newLevel;
+    level.textContent=levelVal;
+    restartLoop();
+  }
+}
+
+/* ============ BUTTONS ============ */
 startBtn.onclick=()=>{
   if(!running){
     running=true;
-    interval=setInterval(loop,1000/speed);
+    restartLoop();
   }
 };
 
@@ -167,54 +177,49 @@ pauseBtn.onclick=()=>{
   clearInterval(interval);
 };
 
-/* ================= UNLOCK ================= */
-function checkUnlock(){
-  for(let s in skinData){
-    if(score>=skinData[s].unlock && !unlocked.includes(s)){
-      unlocked.push(s);
-      alert("🎉 Skin Unlocked: "+s.toUpperCase());
-    }
-  }
-  localStorage.setItem("skins",JSON.stringify(unlocked));
-  updateSkinSelect();
-}
-
-/* ================= UI HELPERS ================= */
-function updateSkinSelect(){
-  skinSelect.innerHTML="";
-  for(let s in skinData){
-    let o=document.createElement("option");
-    o.value=s;
-    if(!unlocked.includes(s)){
-      o.textContent=s+" 🔒 ("+skinData[s].unlock+")";
-      o.disabled=true;
-    }else o.textContent=s+" ✅";
-    skinSelect.appendChild(o);
-  }
-  skinSelect.value=skin;
-}
-
-skinSelect.onchange=()=>{
-  skin=skinSelect.value;
-  localStorage.setItem("skin",skin);
+restartBtn.onclick=()=>{
+  clearInterval(interval);
+  running=false;
+  reset();
 };
 
-/* ================= GAME OVER ================= */
+/* ============ GAME OVER ============ */
 function gameOver(){
   pauseBtn.onclick();
-  alert("Game Over! Score: "+score);
-  reset();
+
+  if(scoreVal > highScore){
+    highScore = scoreVal;
+    localStorage.setItem("neonSnakeHigh", highScore);
+    high.textContent = highScore;
+    alert("🎉 New High Score: " + highScore);
+  }else{
+    alert("Game Over!\nScore: " + scoreVal);
+  }
 }
 
-/* ================= RESET ================= */
+/* ============ HELPERS ============ */
 function reset(){
   snake=[{x:100,y:100}];
   dir=next="RIGHT";
-  score=0;
   food=randomPos();
+  scoreVal=0;
+  levelVal=1;
+  score.textContent=0;
+  level.textContent=1;
+  draw();
 }
 
-/* ================= UTIL ================= */
+function restartLoop(){
+  clearInterval(interval);
+  interval=setInterval(loop,1000/(baseSpeed+levelVal));
+}
+
+function hitWall(h){
+  return h.x<0||h.y<0||h.x>=520||h.y>=520;
+}
+function hitSelf(h){
+  return snake.slice(1).some(p=>p.x===h.x&&p.y===h.y);
+}
 function randomPos(){
   return{
     x:Math.floor(Math.random()*26)*20,
