@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Snake 🌈</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+  margin:0;
+  background:#000;
+  color:#fff;
+  font-family:Arial;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+h2{margin:10px}
+canvas{
+  border:3px solid #333;
+  background:#000;
+}
+#panel{
+  display:flex;
+  gap:10px;
+  margin-bottom:6px;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+select,button{
+  padding:6px 10px;
+  background:#111;
+  color:white;
+  border:1px solid #444;
+  border-radius:6px;
+}
+button{cursor:pointer}
+.controls{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:repeat(3,70px);
+  gap:8px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Neon Snake 🌈</h2>
+
+<div id="panel">
+  <button id="startBtn">▶ Start</button>
+  <button id="pauseBtn">⏸ Pause</button>
+
+  <label>Skin:
+    <select id="skinSelect"></select>
+  </label>
+</div>
+
+<canvas id="cv" width="520" height="520"></canvas>
+
+<!-- Mobile controls -->
+<div class="controls">
+  <div></div><button onclick="setDir('UP')">⬆</button><div></div>
+  <button onclick="setDir('LEFT')">⬅</button>
+  <button onclick="setDir('DOWN')">⬇</button>
+  <button onclick="setDir('RIGHT')">➡</button>
+</div>
+
+<script>
+/* ================= CORE ================= */
+const canvas=cv,ctx=canvas.getContext("2d");
+const SIZE=20;
+let interval=null;
+let speed=7;
+let running=false;
+
+/* ================= SNAKE ================= */
+let snake=[{x:100,y:100}];
+let dir="RIGHT",next="RIGHT";
+let food=randomPos();
+let score=0;
+
+/* ================= SKINS ================= */
+const skinData={
+  neon:{draw:i=>"#00ff88",unlock:0},
+  fire:{draw:i=>`hsl(${10+i*6},100%,50%)`,unlock:5},
+  ice:{draw:i=>"#66ccff",unlock:10},
+  cyber:{draw:i=>"#bb00ff",unlock:20},
+  rainbow:{draw:i=>`hsl(${Date.now()/8+i*25},100%,50%)`,unlock:30}
+};
+
+let unlocked=JSON.parse(localStorage.getItem("skins"))||["neon"];
+let skin=localStorage.getItem("skin")||"neon";
+
+/* ================= UI INIT ================= */
+updateSkinSelect();
+
+/* ================= INPUT ================= */
+document.addEventListener("keydown",e=>{
+  if(!running) return;
+  const k=e.key.toLowerCase();
+  if((k==="w"||k==="arrowup")&&dir!=="DOWN")next="UP";
+  if((k==="s"||k==="arrowdown")&&dir!=="UP")next="DOWN";
+  if((k==="a"||k==="arrowleft")&&dir!=="RIGHT")next="LEFT";
+  if((k==="d"||k==="arrowright")&&dir!=="LEFT")next="RIGHT";
+});
+
+function setDir(d){
+  if(!running) return;
+  const o={UP:"DOWN",DOWN:"UP",LEFT:"RIGHT",RIGHT:"LEFT"};
+  if(o[dir]!==d) next=d;
+}
+
+/* ================= GAME LOOP ================= */
+function loop(){
+  dir=next;
+  let head={...snake[0]};
+  if(dir==="UP")head.y-=SIZE;
+  if(dir==="DOWN")head.y+=SIZE;
+  if(dir==="LEFT")head.x-=SIZE;
+  if(dir==="RIGHT")head.x+=SIZE;
+  snake.unshift(head);
+
+  if(head.x===food.x && head.y===food.y){
+    score++;
+    checkUnlock();
+    food=randomPos();
+  }else snake.pop();
+
+  if(head.x<0||head.y<0||head.x>=520||head.y>=520) gameOver();
+  for(let i=1;i<snake.length;i++)
+    if(head.x===snake[i].x && head.y===snake[i].y) gameOver();
+
+  draw();
+}
+
+/* ================= DRAW ================= */
+function draw(){
+  ctx.clearRect(0,0,520,520);
+
+  // Food
+  ctx.fillStyle="red";
+  ctx.beginPath();
+  ctx.arc(food.x+10,food.y+10,8,0,Math.PI*2);
+  ctx.fill();
+
+  // Snake
+  snake.forEach((p,i)=>{
+    ctx.fillStyle=skinData[skin].draw(i);
+    ctx.beginPath();
+    ctx.arc(p.x+10,p.y+10,9,0,Math.PI*2);
+    ctx.fill();
+  });
+}
+
+/* ================= BUTTONS ================= */
+startBtn.onclick=()=>{
+  if(!running){
+    running=true;
+    interval=setInterval(loop,1000/speed);
+  }
+};
+
+pauseBtn.onclick=()=>{
+  running=false;
+  clearInterval(interval);
+};
+
+/* ================= UNLOCK ================= */
+function checkUnlock(){
+  for(let s in skinData){
+    if(score>=skinData[s].unlock && !unlocked.includes(s)){
+      unlocked.push(s);
+      alert("🎉 Skin Unlocked: "+s.toUpperCase());
+    }
+  }
+  localStorage.setItem("skins",JSON.stringify(unlocked));
+  updateSkinSelect();
+}
+
+/* ================= UI HELPERS ================= */
+function updateSkinSelect(){
+  skinSelect.innerHTML="";
+  for(let s in skinData){
+    let o=document.createElement("option");
+    o.value=s;
+    if(!unlocked.includes(s)){
+      o.textContent=s+" 🔒 ("+skinData[s].unlock+")";
+      o.disabled=true;
+    }else o.textContent=s+" ✅";
+    skinSelect.appendChild(o);
+  }
+  skinSelect.value=skin;
+}
+
+skinSelect.onchange=()=>{
+  skin=skinSelect.value;
+  localStorage.setItem("skin",skin);
+};
+
+/* ================= GAME OVER ================= */
+function gameOver(){
+  pauseBtn.onclick();
+  alert("Game Over! Score: "+score);
+  reset();
+}
+
+/* ================= RESET ================= */
+function reset(){
+  snake=[{x:100,y:100}];
+  dir=next="RIGHT";
+  score=0;
+  food=randomPos();
+}
+
+/* ================= UTIL ================= */
+function randomPos(){
+  return{
+    x:Math.floor(Math.random()*26)*20,
+    y:Math.floor(Math.random()*26)*20
+  };
+}
+</script>
+
+</body>
+</html>
